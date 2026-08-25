@@ -1,7 +1,24 @@
 # Order Service v0.1
 
-An in-memory FastAPI service that owns standalone restaurant orders.
-It does not call the catalog, inventory, or account services. Data resets whenever the process restarts.
+An in-memory FastAPI service that synchronously orchestrates catalog pricing,
+inventory reservation, and restaurant credit reservation. Data resets whenever
+the process restarts.
+
+## Service configuration
+
+- `CATALOG_SERVICE_URL` (default: `http://localhost:8001`)
+- `INVENTORY_SERVICE_URL` (default: `http://localhost:8002`)
+- `ACCOUNT_SERVICE_URL` (default: `http://localhost:8003`)
+
+These distinct localhost ports allow all four services to run locally together,
+with order-service on port 8000.
+
+## Known consistency limitation
+
+Reservations are not yet coordinated by a transaction or saga. If inventory is
+reserved and the subsequent account credit reservation fails, inventory remains
+reserved even though no order is created. The API returns the account-service
+error. Compensation/rollback will be added later.
 
 ## Run locally
 

@@ -14,6 +14,20 @@ spec:
     spec:
       containers:
         - name: catalog-service
-          image: saujandsre/catalog-service:v0.1
+          image: saujandsre/catalog-service:v0.2
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: catalog-db-secret
+                  key: DATABASE_URL
           ports:
             - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000

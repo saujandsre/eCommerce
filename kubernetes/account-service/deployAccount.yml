@@ -14,6 +14,20 @@ spec:
     spec:
       containers:
         - name: account-service
-          image: saujandsre/account-service:v0.1
+          image: saujandsre/account-service:v0.2
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: account-db-secret
+                  key: DATABASE_URL
           ports:
             - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000

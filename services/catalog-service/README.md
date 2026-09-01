@@ -22,7 +22,9 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-No sample products are inserted automatically.
+No sample products are inserted automatically. After migrations, `python -m
+app.seed` idempotently inserts the development product set without overwriting
+existing products.
 
 The API is available at `http://localhost:8000`; interactive documentation is at `/docs`.
 
@@ -48,8 +50,8 @@ The tests apply Alembic migrations and roll back product changes after each test
 From this directory:
 
 ```bash
-docker build -t catalog-service:v0.2 .
-docker run --rm -p 8000:8000 -e DATABASE_URL="$DATABASE_URL" catalog-service:v0.2
+docker build -t catalog-service:v0.3 .
+docker run --rm -p 8000:8000 -e DATABASE_URL="$DATABASE_URL" catalog-service:v0.3
 ```
 
 Run migrations as a separate deployment step before starting application replicas.

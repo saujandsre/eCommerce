@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: catalog-service
-          image: saujandsre/catalog-service:v0.2
+          image: saujandsre/catalog-service:v0.3
           env:
             - name: DATABASE_URL
               valueFrom:

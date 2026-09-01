@@ -14,8 +14,13 @@ spec:
     spec:
       containers:
         - name: order-service
-          image: saujandsre/order-service:v0.2
+          image: saujandsre/order-service:v0.3
           env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: order-db-secret
+                  key: DATABASE_URL
             - name: CATALOG_SERVICE_URL
               value: "http://catalog-service:8000"
 
@@ -26,3 +31,11 @@ spec:
               value: "http://account-service:8000"
           ports:
             - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000

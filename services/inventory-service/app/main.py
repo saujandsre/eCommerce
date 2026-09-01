@@ -1,70 +1,48 @@
-from typing import Annotated
+from fastapi import Depends, FastAPI, HTTPException, status
+from sqlalchemy import select, text, update
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import InventoryItem
+from app.schemas import InventoryItemRead, QuantityRequest
 
-from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, Field
-
-
-class InventoryItem(BaseModel):
-    product_id: Annotated[int, Field(gt=0)]
-    sku: Annotated[str, Field(min_length=1)]
-    quantity_available: Annotated[int, Field(ge=0)]
-    quantity_reserved: Annotated[int, Field(ge=0)]
-
-
-class QuantityRequest(BaseModel):
-    quantity: Annotated[int, Field(gt=0)]
-
-
-SAMPLE_INVENTORY = [
-    InventoryItem(product_id=1, sku="RICE-BASMATI-25KG", quantity_available=120, quantity_reserved=0),
-    InventoryItem(product_id=2, sku="OIL-SUNFLOWER-15L", quantity_available=75, quantity_reserved=5),
-    InventoryItem(product_id=3, sku="CHICKEN-WHOLE-1KG", quantity_available=250, quantity_reserved=20),
-    InventoryItem(product_id=4, sku="TOMATO-LOCAL-1KG", quantity_available=400, quantity_reserved=30),
-    InventoryItem(product_id=5, sku="CLEAN-DISHWASH-5L", quantity_available=60, quantity_reserved=0),
-]
-
-inventory: dict[int, InventoryItem] = {item.product_id: item.model_copy() for item in SAMPLE_INVENTORY}
-
-app = FastAPI(title="Inventory Service", version="0.1.0")
-
-
-def find_inventory(product_id: int) -> InventoryItem:
-    item = inventory.get(product_id)
-    if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found")
-    return item
-
+app = FastAPI(title="Inventory Service", version="0.2.0")
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "healthy"}
+def health() -> dict[str, str]: return {"status": "healthy"}
 
+@app.get("/ready")
+def ready(db: Session = Depends(get_db)) -> dict[str, str]:
+    try: db.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc: raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    return {"status": "ready"}
 
-@app.get("/inventory", response_model=list[InventoryItem])
-def list_inventory() -> list[InventoryItem]:
-    return list(inventory.values())
+@app.get("/inventory", response_model=list[InventoryItemRead])
+def list_inventory(db: Session = Depends(get_db)) -> list[InventoryItem]:
+    return list(db.scalars(select(InventoryItem).order_by(InventoryItem.product_id)))
 
-
-@app.get("/inventory/{product_id}", response_model=InventoryItem)
-def get_inventory(product_id: int) -> InventoryItem:
-    return find_inventory(product_id)
-
-
-@app.post("/inventory/{product_id}/reserve", response_model=InventoryItem)
-def reserve_inventory(product_id: int, request: QuantityRequest) -> InventoryItem:
-    item = find_inventory(product_id)
-    if request.quantity > item.quantity_available:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Insufficient inventory")
-    item.quantity_available -= request.quantity
-    item.quantity_reserved += request.quantity
+@app.get("/inventory/{product_id}", response_model=InventoryItemRead)
+def get_inventory(product_id: int, db: Session = Depends(get_db)) -> InventoryItem:
+    item = db.get(InventoryItem, product_id)
+    if item is None: raise HTTPException(status_code=404, detail="Inventory item not found")
     return item
 
-
-@app.post("/inventory/{product_id}/release", response_model=InventoryItem)
-def release_inventory(product_id: int, request: QuantityRequest) -> InventoryItem:
-    item = find_inventory(product_id)
-    if request.quantity > item.quantity_reserved:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot release more than reserved inventory")
-    item.quantity_reserved -= request.quantity
-    item.quantity_available += request.quantity
+def change_inventory(db: Session, product_id: int, quantity: int, reserve: bool) -> InventoryItem:
+    eligible = InventoryItem.quantity_available >= quantity if reserve else InventoryItem.quantity_reserved >= quantity
+    item = db.scalar(update(InventoryItem).where(InventoryItem.product_id == product_id, eligible).values(
+        quantity_available=InventoryItem.quantity_available + (-quantity if reserve else quantity),
+        quantity_reserved=InventoryItem.quantity_reserved + (quantity if reserve else -quantity)).returning(InventoryItem))
+    if item is None:
+        if db.get(InventoryItem, product_id) is None: raise HTTPException(status_code=404, detail="Inventory item not found")
+        detail = "Insufficient inventory" if reserve else "Cannot release more than reserved inventory"
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+    db.commit()
     return item
+
+@app.post("/inventory/{product_id}/reserve", response_model=InventoryItemRead)
+def reserve_inventory(product_id: int, request: QuantityRequest, db: Session = Depends(get_db)) -> InventoryItem:
+    return change_inventory(db, product_id, request.quantity, True)
+
+@app.post("/inventory/{product_id}/release", response_model=InventoryItemRead)
+def release_inventory(product_id: int, request: QuantityRequest, db: Session = Depends(get_db)) -> InventoryItem:
+    return change_inventory(db, product_id, request.quantity, False)

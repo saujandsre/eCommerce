@@ -9,7 +9,7 @@ def upstream(request: httpx.Request) -> httpx.Response:
         "/accounts": [{"restaurant_id": 1, "restaurant_name": "Everest Kitchen", "available_credit_npr": 5000, "reserved_credit_npr": 0}],
         "/products": [{"id": 10, "sku": "RICE-01", "name": "Basmati Rice", "price_npr": 250}],
         "/inventory": [{"product_id": 10, "quantity_available": 12, "quantity_reserved": 0}],
-        "/orders": [],
+        "/orders": [{"id": 6, "restaurant_id": 1, "items": [{"product_id": 10, "quantity": 1, "unit_price_npr": 250}], "status": "CONFIRMED", "total_npr": 250, "created_at": "2026-01-01T00:00:00"}],
     }
     if request.method == "POST" and request.url.path == "/orders":
         return httpx.Response(201, json={"id": 7, "restaurant_id": 1, "items": [{"product_id": 10, "quantity": 2, "unit_price_npr": 250}], "status": "CONFIRMED", "total_npr": 500, "created_at": "2026-01-01T00:00:00"})
@@ -31,6 +31,8 @@ def test_page_and_confirmed_order():
         assert response.status_code == 200
         assert "Everest Kitchen" in response.text
         assert "Basmati Rice" in response.text
+        assert "#6" in response.text
+        assert "<td>1</td>" in response.text
 
         response = client.post("/orders", data={"restaurant_id": "1", "quantity_10": "2"})
         assert response.status_code == 200

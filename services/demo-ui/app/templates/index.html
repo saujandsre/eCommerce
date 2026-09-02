@@ -29,7 +29,7 @@
 </head>
 <body><main>
   <header><div><h1>Restaurant Commerce</h1><p class="subtitle">Order supplies from the live service workload</p></div><span class="muted">Demo UI</span></header>
-  {% if result %}<div class="notice success"><strong>Order #{{ result.id }} confirmed.</strong> Total: NPR {{ "%.2f"|format(result.total_npr) }}</div>{% endif %}
+  {% if result %}<div class="notice success"><strong>Order #{{ result["id"] }} confirmed.</strong> Total: NPR {{ "%.2f"|format(result["total_npr"]) }}</div>{% endif %}
   {% if error %}<div class="notice error"><strong>Order rejected.</strong> {{ error }}</div>{% endif %}
   <div class="grid">
     <section class="card">
@@ -37,17 +37,17 @@
       <form method="get" action="/">
         <label for="restaurant_id">Select account</label>
         <select id="restaurant_id" name="restaurant_id" onchange="this.form.submit()">
-          {% for account in accounts %}<option value="{{ account.restaurant_id }}" {% if account.restaurant_id == selected_id %}selected{% endif %}>{{ account.restaurant_name }} (#{{ account.restaurant_id }})</option>{% endfor %}
+          {% for account in accounts %}<option value="{{ account["restaurant_id"] }}" {% if account["restaurant_id"] == selected_id %}selected{% endif %}>{{ account["restaurant_name"] }} (#{{ account["restaurant_id"] }})</option>{% endfor %}
         </select>
       </form>
-      <div class="credit"><span class="muted">Available credit</span><strong>NPR {{ "%.2f"|format(selected_account.available_credit_npr) if selected_account else "—" }}</strong></div>
+      <div class="credit"><span class="muted">Available credit</span><strong>NPR {{ "%.2f"|format(selected_account["available_credit_npr"]) if selected_account else "—" }}</strong></div>
     </section>
     <section class="card">
       <h2>Catalog</h2>
       <form method="post" action="/orders">
         <input type="hidden" name="restaurant_id" value="{{ selected_id or '' }}">
         <table><thead><tr><th>Product</th><th>Price</th><th>In stock</th><th>Qty</th></tr></thead><tbody>
-          {% for product in products %}<tr><td><strong>{{ product.name }}</strong><br><span class="muted">{{ product.sku }}</span></td><td>NPR {{ "%.2f"|format(product.price_npr) }}</td><td>{{ product.available }}</td><td><input aria-label="Quantity for {{ product.name }}" type="number" name="quantity_{{ product.id }}" min="0" max="{{ product.available }}" value="0"></td></tr>{% endfor %}
+          {% for product in products %}<tr><td><strong>{{ product["name"] }}</strong><br><span class="muted">{{ product["sku"] }}</span></td><td>NPR {{ "%.2f"|format(product["price_npr"]) }}</td><td>{{ product["available"] }}</td><td><input aria-label="Quantity for {{ product["name"] }}" type="number" name="quantity_{{ product["id"] }}" min="0" max="{{ product["available"] }}" value="0"></td></tr>{% endfor %}
         </tbody></table>
         <button type="submit" {% if not selected_account or not products %}disabled{% endif %}>Place order</button>
       </form>
@@ -55,7 +55,7 @@
   </div>
   <section class="card orders"><h2>Recent orders</h2>
     {% if orders %}<table><thead><tr><th>Order</th><th>Items</th><th>Status</th><th>Total</th></tr></thead><tbody>
-      {% for order in orders %}<tr><td>#{{ order.id }}</td><td>{{ order.items|length }}</td><td><span class="status">{{ order.status }}</span></td><td>NPR {{ "%.2f"|format(order.total_npr) }}</td></tr>{% endfor %}
+      {% for order in orders %}<tr><td>#{{ order["id"] }}</td><td>{{ order["items"]|length }}</td><td><span class="status">{{ order["status"] }}</span></td><td>NPR {{ "%.2f"|format(order["total_npr"]) }}</td></tr>{% endfor %}
     </tbody></table>{% else %}<p class="muted">No recent orders for this account.</p>{% endif %}
   </section>
 </main></body></html>

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-ui
+  template:
+    metadata:
+      labels:
+        app: demo-ui
+    spec:
+      containers:
+        - name: demo-ui
+          image: saujandsre/demo-ui:v0.1
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: CATALOG_SERVICE_URL
+              value: http://catalog-service:8000
+            - name: INVENTORY_SERVICE_URL
+              value: http://inventory-service:8000
+            - name: ACCOUNT_SERVICE_URL
+              value: http://account-service:8000
+            - name: ORDER_SERVICE_URL
+              value: http://order-service:8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http

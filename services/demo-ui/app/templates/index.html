@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Commerce Demo</title>
+  <style>
+    :root { color-scheme: light; --ink:#17212b; --muted:#667085; --line:#e4e7ec; --accent:#176b5b; --soft:#eef8f5; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:#f6f7f9; color:var(--ink); font:15px/1.45 system-ui,-apple-system,sans-serif; }
+    main { max-width:960px; margin:36px auto; padding:0 20px; }
+    header { display:flex; align-items:end; justify-content:space-between; margin-bottom:24px; }
+    h1 { margin:0; font-size:28px; letter-spacing:-.5px; } h2 { margin:0 0 16px; font-size:18px; }
+    .subtitle,.muted { color:var(--muted); } .subtitle { margin:4px 0 0; }
+    .grid { display:grid; grid-template-columns:1fr 2fr; gap:18px; }
+    .card { background:white; border:1px solid var(--line); border-radius:12px; padding:20px; box-shadow:0 1px 2px #1018280d; }
+    label { display:block; color:var(--muted); font-size:13px; margin-bottom:6px; }
+    select,input { width:100%; padding:9px 10px; border:1px solid #cfd4dc; border-radius:7px; background:white; font:inherit; }
+    .credit { margin-top:20px; padding:16px; background:var(--soft); border-radius:9px; }
+    .credit strong { display:block; margin-top:2px; color:var(--accent); font-size:25px; }
+    table { width:100%; border-collapse:collapse; } th { color:var(--muted); font-size:12px; text-align:left; text-transform:uppercase; letter-spacing:.04em; }
+    th,td { border-bottom:1px solid var(--line); padding:11px 8px; } th:last-child,td:last-child { text-align:right; }
+    input[type=number] { width:74px; margin-left:auto; } button { margin-top:18px; width:100%; border:0; border-radius:8px; padding:11px 16px; background:var(--accent); color:white; font-weight:650; cursor:pointer; }
+    .notice { margin-bottom:18px; padding:14px 16px; border-radius:9px; border:1px solid; }
+    .success { color:#075d4b; background:#ecfdf3; border-color:#a6f4c5; } .error { color:#912018; background:#fef3f2; border-color:#fecdca; }
+    .orders { margin-top:18px; } .status { font-size:12px; font-weight:700; color:var(--accent); }
+    @media(max-width:700px) { .grid { grid-template-columns:1fr; } header { align-items:start; flex-direction:column; } }
+  </style>
+</head>
+<body><main>
+  <header><div><h1>Restaurant Commerce</h1><p class="subtitle">Order supplies from the live service workload</p></div><span class="muted">Demo UI</span></header>
+  {% if result %}<div class="notice success"><strong>Order #{{ result.id }} confirmed.</strong> Total: NPR {{ "%.2f"|format(result.total_npr) }}</div>{% endif %}
+  {% if error %}<div class="notice error"><strong>Order rejected.</strong> {{ error }}</div>{% endif %}
+  <div class="grid">
+    <section class="card">
+      <h2>Restaurant account</h2>
+      <form method="get" action="/">
+        <label for="restaurant_id">Select account</label>
+        <select id="restaurant_id" name="restaurant_id" onchange="this.form.submit()">
+          {% for account in accounts %}<option value="{{ account.restaurant_id }}" {% if account.restaurant_id == selected_id %}selected{% endif %}>{{ account.restaurant_name }} (#{{ account.restaurant_id }})</option>{% endfor %}
+        </select>
+      </form>
+      <div class="credit"><span class="muted">Available credit</span><strong>NPR {{ "%.2f"|format(selected_account.available_credit_npr) if selected_account else "—" }}</strong></div>
+    </section>
+    <section class="card">
+      <h2>Catalog</h2>
+      <form method="post" action="/orders">
+        <input type="hidden" name="restaurant_id" value="{{ selected_id or '' }}">
+        <table><thead><tr><th>Product</th><th>Price</th><th>In stock</th><th>Qty</th></tr></thead><tbody>
+          {% for product in products %}<tr><td><strong>{{ product.name }}</strong><br><span class="muted">{{ product.sku }}</span></td><td>NPR {{ "%.2f"|format(product.price_npr) }}</td><td>{{ product.available }}</td><td><input aria-label="Quantity for {{ product.name }}" type="number" name="quantity_{{ product.id }}" min="0" max="{{ product.available }}" value="0"></td></tr>{% endfor %}
+        </tbody></table>
+        <button type="submit" {% if not selected_account or not products %}disabled{% endif %}>Place order</button>
+      </form>
+    </section>
+  </div>
+  <section class="card orders"><h2>Recent orders</h2>
+    {% if orders %}<table><thead><tr><th>Order</th><th>Items</th><th>Status</th><th>Total</th></tr></thead><tbody>
+      {% for order in orders %}<tr><td>#{{ order.id }}</td><td>{{ order.items|length }}</td><td><span class="status">{{ order.status }}</span></td><td>NPR {{ "%.2f"|format(order.total_npr) }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="muted">No recent orders for this account.</p>{% endif %}
+  </section>
+</main></body></html>

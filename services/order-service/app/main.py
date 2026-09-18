@@ -1,7 +1,10 @@
 from decimal import Decimal, InvalidOperation
 import os
+from time import perf_counter
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -14,6 +17,35 @@ INVENTORY_SERVICE_URL=os.getenv("INVENTORY_SERVICE_URL","http://localhost:8002")
 ACCOUNT_SERVICE_URL=os.getenv("ACCOUNT_SERVICE_URL","http://localhost:8003").rstrip("/")
 DOWNSTREAM_TIMEOUT_SECONDS=5.0
 app=FastAPI(title="Order Service",version="0.3.0")
+
+ORDER_ATTEMPTS = Counter("order_creation_attempts_total", "Total POST /orders attempts.")
+ORDER_SUCCESSES = Counter("order_creation_successes_total", "Orders persisted and confirmed by POST /orders.")
+ORDER_FAILURES = Counter("order_creation_failures_total", "POST /orders attempts that exited with an error.")
+ORDER_DURATION = Histogram("order_creation_duration_seconds", "Full POST /orders workflow duration in seconds.")
+
+@app.middleware("http")
+async def measure_order_creation(request, call_next):
+    if request.method != "POST" or request.url.path != "/orders":
+        return await call_next(request)
+    ORDER_ATTEMPTS.inc()
+    started = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        ORDER_FAILURES.inc()
+        raise
+    else:
+        if response.status_code == 201:
+            ORDER_SUCCESSES.inc()
+        else:
+            ORDER_FAILURES.inc()
+        return response
+    finally:
+        ORDER_DURATION.observe(perf_counter() - started)
+
+@app.get("/metrics", include_in_schema=False)
+def metrics():
+    return Response(content=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 @app.get("/health")
 def health()->dict[str,str]: return {"status":"healthy"}

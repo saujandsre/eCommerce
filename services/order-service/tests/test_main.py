@@ -127,3 +127,90 @@ def test_catalog_unavailable_prevents_reservations(client, monkeypatch):
         raise httpx.ConnectError("refused", request=request)
     monkeypatch.setattr(main.httpx, "Client", lambda **kwargs: REAL_CLIENT(transport=httpx.MockTransport(handle), **kwargs))
     assert client.post("/orders", json=ORDER_REQUEST).json() == {"detail": "Catalog service is unavailable"}
+
+
+def metric_values(client):
+    from prometheus_client.parser import text_string_to_metric_families
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    return {
+        sample.name: sample.value
+        for family in text_string_to_metric_families(response.text)
+        for sample in family.samples
+        if sample.name.startswith("order_creation_") and not sample.labels
+    }
+
+
+def test_metrics_scrapes_and_other_routes_do_not_count(client):
+    before = metric_values(client)
+    client.get("/health")
+    client.get("/orders")
+    client.post("/orders/999/confirm")
+    assert metric_values(client) == before
+    text = client.get("/metrics").text
+    assert "# TYPE order_creation_attempts_total counter" in text
+    assert "# TYPE order_creation_successes_total counter" in text
+    assert "# TYPE order_creation_failures_total counter" in text
+    assert "# TYPE order_creation_duration_seconds histogram" in text
+
+
+@pytest.mark.parametrize("outcome,expected_status", [
+    ("success", 201), ("validation", 422), ("catalog", 502),
+    ("inventory", 409), ("account", 409), ("database", 503),
+    ("unexpected", 500),
+])
+def test_order_metrics(client, monkeypatch, outcome, expected_status):
+    from sqlalchemy.exc import SQLAlchemyError
+    from sqlalchemy.orm import Session
+
+    events = []
+    def clock():
+        events.append("clock")
+        return 10.0 if len(events) == 1 else 12.5
+
+    def handle(request):
+        events.append(request.url.path)
+        if outcome == "unexpected":
+            raise RuntimeError("unexpected downstream error")
+        if request.method == "GET":
+            if outcome == "catalog":
+                return httpx.Response(500)
+            product_id = int(request.url.path.rsplit("/", 1)[-1])
+            return httpx.Response(200, json={"price_npr": PRICES[product_id]})
+        if outcome == "inventory" and request.url.path.endswith("/reserve"):
+            return httpx.Response(409)
+        if outcome == "account" and request.url.path.endswith("/reserve-credit"):
+            return httpx.Response(409)
+        return httpx.Response(200, json={})
+
+    original_commit = Session.commit
+    def commit(db):
+        events.append("commit")
+        if outcome == "database":
+            raise SQLAlchemyError("commit failed")
+        return original_commit(db)
+
+    monkeypatch.setattr(main, "perf_counter", clock)
+    monkeypatch.setattr(Session, "commit", commit)
+    monkeypatch.setattr(main.httpx, "Client", lambda **kwargs: REAL_CLIENT(transport=httpx.MockTransport(handle), **kwargs))
+    before = metric_values(client)
+    payload = {"restaurant_id": 1, "items": []} if outcome == "validation" else ORDER_REQUEST
+    with TestClient(app, raise_server_exceptions=False) as error_client:
+        response = error_client.post("/orders", json=payload)
+    assert response.status_code == expected_status
+    after = metric_values(client)
+    assert after["order_creation_attempts_total"] - before["order_creation_attempts_total"] == 1
+    assert after["order_creation_successes_total"] - before["order_creation_successes_total"] == (outcome == "success")
+    assert after["order_creation_failures_total"] - before["order_creation_failures_total"] == (outcome != "success")
+    assert after["order_creation_duration_seconds_count"] - before["order_creation_duration_seconds_count"] == 1
+    assert after["order_creation_duration_seconds_sum"] - before["order_creation_duration_seconds_sum"] == pytest.approx(2.5)
+    assert events[0] == events[-1] == "clock"
+    assert events.count("clock") == 2
+    if outcome == "success":
+        assert "commit" in events
+        assert response.json()["status"] == "CONFIRMED"
+        with SessionLocal() as db:
+            assert db.get(Order, response.json()["id"]).status == "CONFIRMED"
+    if outcome == "database":
+        assert events[-4:-1] == ["/accounts/1/release-credit", "/inventory/3/release", "/inventory/1/release"]
